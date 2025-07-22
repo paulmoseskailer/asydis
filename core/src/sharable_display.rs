@@ -224,7 +224,7 @@ where
     D: SharableBufferedDisplay + ?Sized,
 {
     fn bounding_box(&self) -> Rectangle {
-        self.area
+        Rectangle::new_at_origin(self.area.size)
     }
 }
 
