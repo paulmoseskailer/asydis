@@ -45,6 +45,36 @@ impl<B: Copy + PartialEq> CompressedBuffer<B> {
         Err(())
     }
 
+    // merges any two consecutive runs with the same color that would fit into a single run
+    fn merge_remainders(&mut self) {
+        let mut optimal_until = 0;
+        while optimal_until < (self.inner.len() - 1) {
+            'inner: for run in optimal_until..(self.inner.len() - 1) {
+                let (color, len) = self.inner[run];
+                let (next_color, next_len) = self.inner[run + 1];
+                if color != next_color || len as usize + next_len as usize > 255 {
+                    // this is fine
+                    optimal_until = run + 1;
+                    continue 'inner;
+                } else {
+                    // these should be merged into one
+                    self.inner[run].1 = len.saturating_add(next_len);
+                    self.inner.remove(run + 1);
+                    break 'inner;
+                }
+            }
+        }
+
+        // ensure no more merging possible
+        self.inner.chunks_exact(2).for_each(|chunk| {
+            let (b1, len_1) = chunk[0];
+            let (b2, len_2) = chunk[1];
+            if (b1 == b2) && (len_1.saturating_add(len_2)) < 255 {
+                panic!("not optimal");
+            }
+        });
+    }
+
     // Finds the run that contains the decompressed target_index.
     // Returns run_index and decompressed start index for that run.
     fn find_run_with_index(&self, target_index: usize) -> Option<(usize, usize)> {
@@ -140,6 +170,7 @@ impl<B: Copy + PartialEq> CompressedBuffer<B> {
             );
         }
 
+        self.merge_remainders();
         if self.check_integrity().is_err() {
             panic!(
                 "after set_at_index({}) check_integrity failed",
@@ -187,6 +218,7 @@ impl<B: Copy + PartialEq> CompressedBuffer<B> {
             run_len.saturating_sub(elements_left_in_run),
         );
         self.add_n_elements_at_run_x(num_elements, new_value, insert_index);
+        self.merge_remainders();
         self.check_integrity()?;
 
         Ok(())
