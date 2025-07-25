@@ -171,7 +171,7 @@ where
                     break 'flush;
                 }
             }
-            Timer::after(Duration::from_millis(10) + retry_interval).await;
+            Timer::after(retry_interval).await;
         }
     }
 }
