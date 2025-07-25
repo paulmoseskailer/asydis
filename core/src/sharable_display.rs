@@ -1,4 +1,6 @@
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+};
 use embedded_graphics::prelude::{ContainsPoint, PointsIter};
 use embedded_graphics::{
     Pixel,
@@ -73,6 +75,7 @@ pub struct DisplayPartition<D: SharableBufferedDisplay + ?Sized> {
 
     _display: core::marker::PhantomData<D>,
     flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+    flush_ack: &'static Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl<C, B, D> DisplayPartition<D>
@@ -112,6 +115,7 @@ where
         parent_size: Size,
         area: Rectangle,
         flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+        flush_ack: &'static Signal<CriticalSectionRawMutex, ()>,
     ) -> Result<DisplayPartition<D>, NewPartitionError> {
         let buffer_len = buffer.len();
         Self::check_partition_ok(&area, parent_size, buffer_len)?;
@@ -124,46 +128,14 @@ where
             area,
             _display: core::marker::PhantomData,
             flush_request_channel,
+            flush_ack,
         })
     }
 
     /// Request to flush this partition.
-    pub async fn request_flush(&mut self) {
+    pub async fn request_and_wait_for_flush(&mut self) {
         self.flush_request_channel.send(self.id).await;
-    }
-
-    /// Splits the partition into two new partitions.
-    pub fn split_in_two(
-        &mut self,
-        area1: Rectangle,
-        area2: Rectangle,
-    ) -> Result<(DisplayPartition<D>, DisplayPartition<D>), NewPartitionError> {
-        if !area1.intersection(&area2).is_zero_sized() {
-            return Err(NewPartitionError::Overlaps);
-        }
-
-        Ok((
-            DisplayPartition::new(
-                self.id,
-                unsafe {
-                    // SAFETY: self.buffer and self.buffer_len are initialized from slice in new
-                    core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
-                },
-                self.parent_size,
-                area1,
-                self.flush_request_channel,
-            )?,
-            DisplayPartition::new(
-                self.id,
-                unsafe {
-                    // SAFETY: self.buffer and self.buffer_len are initialized from slice in new
-                    core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
-                },
-                self.parent_size,
-                area2,
-                self.flush_request_channel,
-            )?,
-        ))
+        self.flush_ack.wait().await;
     }
 
     /// Increase this partition's size from an AppClosed event.

@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::{rc::Rc, vec, vec::Vec};
 
-use crate::{FLUSH_REQUESTS, FlushResult, NewPartitionError, SPAWNER, launch_future};
+use crate::{FLUSH_ACKS, FLUSH_REQUESTS, FlushResult, NewPartitionError, SPAWNER, launch_future};
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Instant, Timer};
@@ -102,6 +102,7 @@ where
             area,
             Rc::clone(&self.buffer_pointers[id as usize]),
             &FLUSH_REQUESTS,
+            &FLUSH_ACKS[id as usize],
         )?;
 
         self.partition_areas.push(area).unwrap();
@@ -200,7 +201,7 @@ where
                 Err(_) => {
                     Timer::after(retry_interval).await;
                 }
-                Ok(_) => {
+                Ok(partition) => {
                     // cannot flush a single partition, just flush all
                     let num_chunks = self.size.height as usize / CHUNK_HEIGHT;
                     for chunk in 0..num_chunks {
@@ -224,6 +225,7 @@ where
                             start / 1000,
                             end / 1000
                         );
+                        FLUSH_ACKS[partition as usize].signal(());
                     }
 
                     let flush_result =

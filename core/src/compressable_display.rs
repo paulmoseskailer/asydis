@@ -1,5 +1,7 @@
 use core::cmp::PartialEq;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
+};
 use embedded_graphics::{
     Pixel, draw_target::DrawTarget, geometry::Point, prelude::*, primitives::Rectangle,
 };
@@ -35,6 +37,7 @@ pub struct CompressedDisplayPartition<D: CompressableDisplay> {
 
     _display: core::marker::PhantomData<D>,
     flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+    flush_ack: &'static Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl<D: CompressableDisplay> ContainsPoint for CompressedDisplayPartition<D> {
@@ -61,6 +64,7 @@ where
         area: Rectangle,
         buffer: Rc<Mutex<CriticalSectionRawMutex, CompressedBuffer<D::BufferElement>>>,
         flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+        flush_ack: &'static Signal<CriticalSectionRawMutex, ()>,
     ) -> Result<CompressedDisplayPartition<D>, NewPartitionError> {
         if area.size.width < 8 {
             return Err(NewPartitionError::TooSmall);
@@ -76,6 +80,7 @@ where
             area,
             _display: core::marker::PhantomData,
             flush_request_channel,
+            flush_ack,
         })
     }
 
@@ -85,9 +90,10 @@ where
         todo!("enveloping compressed partitions not yet implemented");
     }
 
-    /// Request to flush this partition.
-    pub async fn request_flush(&mut self) {
+    /// Request to flush this partition and only return once it's done.
+    pub async fn request_and_wait_for_flush(&mut self) {
         self.flush_request_channel.send(self.id).await;
+        self.flush_ack.wait().await;
     }
 }
 

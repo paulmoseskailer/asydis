@@ -4,7 +4,9 @@ use alloc::boxed::Box;
 
 use ::core::{future::Future, pin::Pin};
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
+};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{geometry::Size, primitives::Rectangle};
 use static_cell::StaticCell;
@@ -22,6 +24,10 @@ pub static EVENTS: Channel<CriticalSectionRawMutex, AppEvent, EVENT_QUEUE_SIZE> 
 /// Channel for partitions to request flushing.
 pub(crate) static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> =
     Channel::new();
+
+/// Signals to acknowledge flushing back to partitiosn.
+pub(crate) static FLUSH_ACKS: [Signal<CriticalSectionRawMutex, ()>; MAX_APPS_PER_SCREEN] =
+    [const { Signal::new() }; MAX_APPS_PER_SCREEN];
 
 /// Whether to continue flushing or not.
 #[derive(PartialEq, Eq)]
@@ -83,6 +89,7 @@ where
             parent_area.size,
             area,
             &FLUSH_REQUESTS,
+            &FLUSH_ACKS[index],
         );
 
         if result.is_ok() {
@@ -167,6 +174,7 @@ where
                 let area_to_flush = self.partition_areas[partition as usize];
                 let flush_result =
                     flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
+                FLUSH_ACKS[partition as usize].signal(());
                 if flush_result == FlushResult::Abort {
                     break 'flush;
                 }
