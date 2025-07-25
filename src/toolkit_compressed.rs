@@ -6,7 +6,7 @@ use alloc::{rc::Rc, vec, vec::Vec};
 use crate::{FLUSH_REQUESTS, FlushResult, NewPartitionError, SPAWNER, launch_future};
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
     geometry::{Point, Size},
     prelude::*,
@@ -153,6 +153,7 @@ where
 
             let num_chunks = self.size.height as usize / CHUNK_HEIGHT;
             for chunk in 0..num_chunks {
+                let start = Instant::now().as_micros();
                 let chunk_area = Rectangle::new(
                     Point::new(0, (chunk * CHUNK_HEIGHT) as i32),
                     Size::new(self.size.width, CHUNK_HEIGHT as u32),
@@ -165,6 +166,13 @@ where
                     .await
                     .flush_chunk(&decompressed_chunk, chunk_area)
                     .await;
+                let end = Instant::now().as_micros();
+                defmt::info!(
+                    "APP 5 FLUSH {}ms ({} - {})",
+                    (end.saturating_sub(start)) / 1000,
+                    start / 1000,
+                    end / 1000
+                );
             }
 
             let flush_result = flush_complete_fn(&mut *self.real_display.lock().await).await;
@@ -196,6 +204,7 @@ where
                     // cannot flush a single partition, just flush all
                     let num_chunks = self.size.height as usize / CHUNK_HEIGHT;
                     for chunk in 0..num_chunks {
+                        let start = Instant::now().as_micros();
                         let chunk_area = Rectangle::new(
                             Point::new(0, (chunk * CHUNK_HEIGHT) as i32),
                             Size::new(self.size.width, CHUNK_HEIGHT as u32),
@@ -208,6 +217,13 @@ where
                             .await
                             .flush_chunk(&decompressed_chunk, chunk_area)
                             .await;
+                        let end = Instant::now().as_micros();
+                        defmt::info!(
+                            "APP 5 FLUSH {}ms ({} - {})",
+                            (end.saturating_sub(start)) / 1000,
+                            start / 1000,
+                            end / 1000
+                        );
                     }
 
                     let flush_result =
