@@ -1,4 +1,4 @@
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
 use embedded_graphics::prelude::{ContainsPoint, PointsIter};
 use embedded_graphics::{
     Pixel,
@@ -72,7 +72,7 @@ pub struct DisplayPartition<D: SharableBufferedDisplay + ?Sized> {
     pub area: Rectangle,
 
     _display: core::marker::PhantomData<D>,
-    flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+    flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
 }
 
 impl<C, B, D> DisplayPartition<D>
@@ -111,7 +111,7 @@ where
         buffer: &mut [B],
         parent_size: Size,
         area: Rectangle,
-        flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
+        flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
     ) -> Result<DisplayPartition<D>, NewPartitionError> {
         let buffer_len = buffer.len();
         Self::check_partition_ok(&area, parent_size, buffer_len)?;

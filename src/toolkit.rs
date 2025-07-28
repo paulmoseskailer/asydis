@@ -4,7 +4,11 @@ use alloc::boxed::Box;
 
 use ::core::{future::Future, pin::Pin};
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    channel::Channel,
+    mutex::Mutex,
+};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{geometry::Size, primitives::Rectangle};
 use static_cell::StaticCell;
@@ -20,7 +24,7 @@ pub(crate) static SPAWNER: StaticCell<Spawner> = StaticCell::new();
 pub static EVENTS: Channel<CriticalSectionRawMutex, AppEvent, EVENT_QUEUE_SIZE> = Channel::new();
 
 /// Channel for partitions to request flushing.
-pub(crate) static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> =
+pub(crate) static FLUSH_REQUESTS: Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN> =
     Channel::new();
 
 /// Whether to continue flushing or not.
@@ -158,20 +162,18 @@ where
     }
 
     /// Spawns a background task that waits for flush requests from all [`DisplayPartition`]s and flushes.
-    pub async fn wait_for_flush_requests<F>(&self, mut flush_area_fn: F, retry_interval: Duration)
+    pub async fn wait_for_flush_requests<F>(&self, mut flush_area_fn: F)
     where
         F: AsyncFnMut(&mut D, Rectangle) -> FlushResult,
     {
         'flush: loop {
-            while let Ok(partition) = FLUSH_REQUESTS.try_receive() {
-                let area_to_flush = self.partition_areas[partition as usize];
-                let flush_result =
-                    flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
-                if flush_result == FlushResult::Abort {
-                    break 'flush;
-                }
+            let partition = FLUSH_REQUESTS.receive().await;
+            let area_to_flush = self.partition_areas[partition as usize];
+            let flush_result =
+                flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
+            if flush_result == FlushResult::Abort {
+                break 'flush;
             }
-            Timer::after(retry_interval).await;
         }
     }
 }
