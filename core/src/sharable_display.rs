@@ -205,7 +205,6 @@ where
         let whole_buffer: &mut [B] =
             // Safety: we check that every index is within our owned slice
             unsafe { core::slice::from_raw_parts_mut(self.buffer, self.buffer_len) };
-        let mut has_drawn = false;
         for p in pixels
             .into_iter()
             .map(|pixel| Pixel(pixel.0 + self.area.top_left, pixel.1))
@@ -214,12 +213,20 @@ where
             let buffer_index = D::calculate_buffer_index(p.0, self.parent_size);
             if self.contains(p.0) {
                 whole_buffer[buffer_index] = D::map_to_buffer_element(p.1);
-                if should_update_dirty_area && !has_drawn {
-                    has_drawn = true;
+                if should_update_dirty_area {
+                    let mut guard = self.draw_tracker.dirty_area.lock().await;
+                    match *guard {
+                        AreaToFlush::All => {}
+                        AreaToFlush::Some(rect) => {
+                            let rect_around_point = Rectangle::new(p.0, Size::new(1, 1));
+                            *guard = AreaToFlush::Some(rect.envelope(&rect_around_point));
+                        }
+                        AreaToFlush::None => {
+                            let rect_around_point = Rectangle::new(p.0, Size::new(1, 1));
+                            *guard = AreaToFlush::Some(rect_around_point);
+                        }
+                    }
                 }
-            }
-            if has_drawn {
-                *self.draw_tracker.dirty_area.lock().await = AreaToFlush::All;
             }
         }
         Ok(())
