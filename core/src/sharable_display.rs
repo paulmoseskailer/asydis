@@ -1,4 +1,4 @@
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel, mutex::Mutex};
 use embedded_graphics::prelude::{ContainsPoint, PointsIter};
 use embedded_graphics::{
     Pixel,
@@ -73,6 +73,7 @@ pub struct DisplayPartition<D: SharableBufferedDisplay + ?Sized> {
 
     _display: core::marker::PhantomData<D>,
     flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
+    draw_tracker: &'static DrawTracker,
 }
 
 impl<C, B, D> DisplayPartition<D>
@@ -112,6 +113,7 @@ where
         parent_size: Size,
         area: Rectangle,
         flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
+        draw_tracker: &'static DrawTracker,
     ) -> Result<DisplayPartition<D>, NewPartitionError> {
         let buffer_len = buffer.len();
         Self::check_partition_ok(&area, parent_size, buffer_len)?;
@@ -124,6 +126,7 @@ where
             area,
             _display: core::marker::PhantomData,
             flush_request_channel,
+            draw_tracker,
         })
     }
 
@@ -152,6 +155,7 @@ where
                 self.parent_size,
                 area1,
                 self.flush_request_channel,
+                self.draw_tracker,
             )?,
             DisplayPartition::new(
                 self.id,
@@ -162,6 +166,7 @@ where
                 self.parent_size,
                 area2,
                 self.flush_request_channel,
+                self.draw_tracker,
             )?,
         ))
     }
@@ -189,13 +194,18 @@ where
         Ok(())
     }
 
-    async fn draw_iter_internal<I>(&mut self, pixels: I) -> Result<(), D::Error>
+    async fn draw_iter_internal<I>(
+        &mut self,
+        pixels: I,
+        should_update_dirty_area: bool,
+    ) -> Result<(), D::Error>
     where
         I: ::core::iter::IntoIterator<Item = Pixel<D::Color>>,
     {
         let whole_buffer: &mut [B] =
             // Safety: we check that every index is within our owned slice
             unsafe { core::slice::from_raw_parts_mut(self.buffer, self.buffer_len) };
+        let mut has_drawn = false;
         for p in pixels
             .into_iter()
             .map(|pixel| Pixel(pixel.0 + self.area.top_left, pixel.1))
@@ -204,6 +214,12 @@ where
             let buffer_index = D::calculate_buffer_index(p.0, self.parent_size);
             if self.contains(p.0) {
                 whole_buffer[buffer_index] = D::map_to_buffer_element(p.1);
+                if should_update_dirty_area && !has_drawn {
+                    has_drawn = true;
+                }
+            }
+            if has_drawn {
+                *self.draw_tracker.dirty_area.lock().await = AreaToFlush::All;
             }
         }
         Ok(())
@@ -239,7 +255,7 @@ where
     where
         I: ::core::iter::IntoIterator<Item = Pixel<Self::Color>>,
     {
-        self.draw_iter_internal(pixels).await
+        self.draw_iter_internal(pixels, true).await
     }
 
     async fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
@@ -251,11 +267,13 @@ where
             // area outside partition, noop
             return Ok(());
         }
+        *self.draw_tracker.dirty_area.lock().await = AreaToFlush::Some(drawable_area);
         self.draw_iter_internal(
             drawable_area
                 .points()
                 .zip(colors)
                 .map(|(pos, color)| Pixel(pos, color)),
+            false,
         )
         .await
     }
@@ -268,6 +286,46 @@ where
     }
 }
 
+/// An object to keep track of which area of the screen has been drawn to.
+pub struct DrawTracker {
+    /// The area that has been drawn to, protected by a mutex.
+    pub dirty_area: Mutex<ThreadModeRawMutex, AreaToFlush>,
+}
+
+impl Default for DrawTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Which part of a partition to flush
+#[derive(Clone, Copy, Debug)]
+pub enum AreaToFlush {
+    /// The entire partition
+    All,
+    /// Only part of the partition
+    Some(Rectangle),
+    /// None of the partition
+    None,
+}
+
+impl DrawTracker {
+    /// Creates a new draw tracker.
+    pub const fn new() -> Self {
+        Self {
+            dirty_area: Mutex::new(AreaToFlush::None),
+        }
+    }
+
+    /// Returns the area that has been drawn to safely.
+    pub async fn take_dirty_area(&self) -> AreaToFlush {
+        let mut guard = self.dirty_area.lock().await;
+        let area = guard.clone();
+        *guard = AreaToFlush::None;
+        area
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use embedded_graphics::{pixelcolor::BinaryColor, prelude::OriginDimensions};
@@ -277,8 +335,8 @@ mod tests {
     const WIDTH: u32 = 16;
     const HEIGHT: u32 = 8;
     const RESOLUTION: usize = (WIDTH * HEIGHT) as usize;
-    static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> =
-        Channel::new();
+    static FLUSH_REQUESTS: Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN> = Channel::new();
+    static DRAW_TRACKER: DrawTracker = DrawTracker::default();
 
     struct FakeDisplay {
         buffer: [BinaryColor; RESOLUTION],

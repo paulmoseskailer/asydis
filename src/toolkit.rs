@@ -4,28 +4,28 @@ use alloc::boxed::Box;
 
 use ::core::{future::Future, pin::Pin};
 use embassy_executor::Spawner;
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
-    channel::Channel,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel, mutex::Mutex};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{geometry::Size, primitives::Rectangle};
 use static_cell::StaticCell;
 
 use shared_display_core::{
-    AppEvent, DisplayPartition, MAX_APPS_PER_SCREEN, NewPartitionError, SharableBufferedDisplay,
+    AppEvent, AreaToFlush, DisplayPartition, DrawTracker, MAX_APPS_PER_SCREEN, NewPartitionError,
+    SharableBufferedDisplay,
 };
 
 const EVENT_QUEUE_SIZE: usize = MAX_APPS_PER_SCREEN;
 pub(crate) static SPAWNER: StaticCell<Spawner> = StaticCell::new();
 
 /// Event queue for all apps to access.
-pub static EVENTS: Channel<CriticalSectionRawMutex, AppEvent, EVENT_QUEUE_SIZE> = Channel::new();
+pub static EVENTS: Channel<ThreadModeRawMutex, AppEvent, EVENT_QUEUE_SIZE> = Channel::new();
 
 /// Channel for partitions to request flushing.
 pub(crate) static FLUSH_REQUESTS: Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN> =
     Channel::new();
+
+static DRAW_TRACKERS: [DrawTracker; MAX_APPS_PER_SCREEN] =
+    [const { DrawTracker::new() }; MAX_APPS_PER_SCREEN];
 
 /// Whether to continue flushing or not.
 #[derive(PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub enum FlushResult {
 /// Shared Display.
 pub struct SharedDisplay<D: SharableBufferedDisplay> {
     /// The actual display, locked with mutex
-    pub real_display: Mutex<CriticalSectionRawMutex, D>,
+    pub real_display: Mutex<ThreadModeRawMutex, D>,
     partition_areas: heapless::Vec<Rectangle, MAX_APPS_PER_SCREEN>,
 
     spawner: &'static Spawner,
@@ -87,6 +87,7 @@ where
             parent_area.size,
             area,
             &FLUSH_REQUESTS,
+            &DRAW_TRACKERS[index],
         );
 
         if result.is_ok() {
@@ -139,6 +140,14 @@ where
         Ok(())
     }
 
+    async fn get_dirty_area_of_partition(&self, partition: usize) -> Option<Rectangle> {
+        match DRAW_TRACKERS[partition].take_dirty_area().await {
+            AreaToFlush::All => Some(self.partition_areas[partition]),
+            AreaToFlush::Some(rect) => Some(rect),
+            AreaToFlush::None => None,
+        }
+    }
+
     /// Runs a given flush function in a loop.
     ///
     /// Provides the passed in function with a Rectangle of the area that has been drawn to since
@@ -150,11 +159,12 @@ where
     {
         'flush: loop {
             for partition in 0..self.partition_areas.len() {
-                let area_to_flush = self.partition_areas[partition];
-                let flush_result =
-                    flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
-                if flush_result == FlushResult::Abort {
-                    break 'flush;
+                if let Some(area_to_flush) = self.get_dirty_area_of_partition(partition).await {
+                    let flush_result =
+                        flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
+                    if flush_result == FlushResult::Abort {
+                        break 'flush;
+                    }
                 }
             }
             Timer::after(flush_interval).await;
@@ -168,11 +178,15 @@ where
     {
         'flush: loop {
             let partition = FLUSH_REQUESTS.receive().await;
-            let area_to_flush = self.partition_areas[partition as usize];
-            let flush_result =
-                flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
-            if flush_result == FlushResult::Abort {
-                break 'flush;
+            if let Some(area_to_flush) = self.get_dirty_area_of_partition(partition as usize).await
+            {
+                let flush_result =
+                    flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
+                if flush_result == FlushResult::Abort {
+                    break 'flush;
+                }
+            } else {
+                defmt::error!("flush request but no dirty area!");
             }
         }
     }
