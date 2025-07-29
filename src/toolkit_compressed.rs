@@ -180,44 +180,35 @@ where
     }
 
     /// Spawns a background task that waits for flush requests from all [`CompressedDisplayPartition`]s and flushes.
-    pub async fn wait_for_flush_requests<F>(
-        &self,
-        mut flush_complete_fn: F,
-        retry_interval: Duration,
-    ) where
+    pub async fn wait_for_flush_requests<F>(&self, mut flush_complete_fn: F)
+    where
         F: AsyncFnMut(&mut D) -> FlushResult,
     {
         loop {
-            match FLUSH_REQUESTS.try_receive() {
-                Err(_) => {
-                    Timer::after(retry_interval).await;
-                }
-                Ok(_) => {
-                    // cannot flush a single partition, just flush all
-                    let num_chunks = self.size.height as usize / CHUNK_HEIGHT;
-                    for chunk in 0..num_chunks {
-                        let chunk_area = Rectangle::new(
-                            Point::new(0, (chunk * CHUNK_HEIGHT) as i32),
-                            Size::new(self.size.width, CHUNK_HEIGHT as u32),
-                        );
+            let _ = FLUSH_REQUESTS.receive().await;
 
-                        let decompressed_chunk: Vec<D::BufferElement> =
-                            self.decompress_chunk(chunk_area).await;
-                        self.real_display
-                            .lock()
-                            .await
-                            .flush_chunk(&decompressed_chunk, chunk_area)
-                            .await;
-                    }
+            // cannot flush a single partition, just flush all
+            let num_chunks = self.size.height as usize / CHUNK_HEIGHT;
+            for chunk in 0..num_chunks {
+                let chunk_area = Rectangle::new(
+                    Point::new(0, (chunk * CHUNK_HEIGHT) as i32),
+                    Size::new(self.size.width, CHUNK_HEIGHT as u32),
+                );
 
-                    let flush_result =
-                        flush_complete_fn(&mut *self.real_display.lock().await).await;
-                    match flush_result {
-                        FlushResult::Continue => {}
-                        FlushResult::Abort => {
-                            break;
-                        }
-                    }
+                let decompressed_chunk: Vec<D::BufferElement> =
+                    self.decompress_chunk(chunk_area).await;
+                self.real_display
+                    .lock()
+                    .await
+                    .flush_chunk(&decompressed_chunk, chunk_area)
+                    .await;
+            }
+
+            let flush_result = flush_complete_fn(&mut *self.real_display.lock().await).await;
+            match flush_result {
+                FlushResult::Continue => {}
+                FlushResult::Abort => {
+                    break;
                 }
             }
         }
