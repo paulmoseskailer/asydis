@@ -22,7 +22,7 @@
 //! # use embedded_graphics_simulator::{
 //! #     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 //! # };
-//! use shared_display::{DisplayPartition, FlushResult, SharedDisplay};
+//! use asydis::{DisplayPartition, FlushResult, SharedDisplay};
 //!
 //! type DisplayType = SimulatorDisplay<BinaryColor>;
 //!
@@ -85,21 +85,21 @@
 //! #[embassy_executor::main]
 //! async fn main(spawner: Spawner) {
 //!     let (display, mut window) = init_simulator_display();
-//!     let mut shared_display: SharedDisplay<DisplayType> = SharedDisplay::new(display, spawner);
+//!     let mut asydis: SharedDisplay<DisplayType> = SharedDisplay::new(display, spawner);
 //!
 //!     let right_rect = Rectangle::new(Point::new(64, 0), Size::new(64, 64));
-//!     shared_display
+//!     asydis
 //!         .launch_new_app(line_app, right_rect)
 //!         .await
 //!         .unwrap();
 //!
 //!     let left_rect = Rectangle::new(Point::new(0, 0), Size::new(64, 64));
-//!     shared_display
+//!     asydis
 //!         .launch_new_app(text_app, left_rect)
 //!         .await
 //!         .unwrap();
 //!
-//!     shared_display
+//!     asydis
 //!         .run_flush_loop_with(async |d, _area| {
 //!             window.update(d);
 //!             if window.events().any(|e| e == SimulatorEvent::Quit) {
@@ -130,6 +130,6 @@
 mod toolkit;
 mod toolkit_compressed;
 
-pub use shared_display_core::*;
+pub use asydis_core::*;
 pub use toolkit::*;
 pub use toolkit_compressed::*;

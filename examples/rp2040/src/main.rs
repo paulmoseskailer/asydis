@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+#[cfg(feature = "compressed")]
+use asydis::{CompressedDisplayPartition, FlushResult, SharedCompressedDisplay};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_rp::{
@@ -21,15 +23,13 @@ use embedded_graphics::{
 };
 use gpio::{Level, Output};
 #[cfg(feature = "compressed")]
-use shared_display::{CompressedDisplayPartition, FlushResult, SharedCompressedDisplay};
-#[cfg(feature = "compressed")]
 type DisplayPartition<D> = CompressedDisplayPartition<D>;
 #[cfg(feature = "compressed")]
 const CHUNK_HEIGHT: usize = SCREEN_HEIGHT / 4;
 #[cfg(feature = "compressed")]
 type SharedDisplay<D> = SharedCompressedDisplay<CHUNK_HEIGHT, D>;
 #[cfg(not(feature = "compressed"))]
-use shared_display::{DisplayPartition, FlushResult, SharedDisplay};
+use asydis::{DisplayPartition, FlushResult, SharedDisplay};
 
 use ssd1351::{
     builder::Builder,

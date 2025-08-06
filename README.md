@@ -1,4 +1,4 @@
-# Async Shared Display
+# Asydis - Async Shared Displays
 
 Enabling concurrent screen-sharing applications with embedded Rust.
 

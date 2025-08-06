@@ -1,3 +1,4 @@
+use asydis::{DisplayPartition, FlushResult, SharedDisplay};
 use embassy_executor::Spawner;
 use embassy_time::Timer;
 use embedded_graphics::{
@@ -11,7 +12,6 @@ use embedded_graphics::{
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
-use shared_display::{DisplayPartition, FlushResult, SharedDisplay};
 
 type DisplayType = SimulatorDisplay<BinaryColor>;
 const SCREEN_WIDTH: usize = 128;

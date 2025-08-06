@@ -24,6 +24,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "250f629c0161ad8107cf89319e990051fae62832fd343083bea452d93e2205fd"
 
 [[package]]
+name = "asydis"
+version = "0.1.0"
+dependencies = [
+ "asydis-core",
+ "embassy-executor",
+ "embassy-sync",
+ "embassy-time",
+ "embedded-graphics",
+ "embedded-graphics-simulator",
+ "heapless",
+ "static_cell",
+]
+
+[[package]]
+name = "asydis-core"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-sync",
+ "embassy-time",
+ "embedded-graphics",
+ "portable-atomic",
+ "tokio",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -254,15 +280,15 @@ dependencies = [
 [[package]]
 name = "embedded-graphics-simulator"
 version = "0.7.0"
-source = "git+https://github.com/paulmoseskailer/simulator.git?branch=compressable#a6fc447727a2eb3fef7cd74dd2a8bf946d329190"
+source = "git+https://github.com/paulmoseskailer/simulator.git?branch=master#3ed2e62ca33b64b27e987c8f0e1388e98985d59b"
 dependencies = [
+ "asydis-core",
  "base64",
  "embedded-graphics",
  "image",
  "maybe-async",
  "ouroboros",
  "sdl2",
- "shared-display-core",
 ]
 
 [[package]]
@@ -685,32 +711,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "version-compare",
-]
-
-[[package]]
-name = "shared-display"
-version = "0.1.0"
-dependencies = [
- "embassy-executor",
- "embassy-sync",
- "embassy-time",
- "embedded-graphics",
- "embedded-graphics-simulator",
- "heapless",
- "shared-display-core",
- "static_cell",
-]
-
-[[package]]
-name = "shared-display-core"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "embassy-sync",
- "embassy-time",
- "embedded-graphics",
- "portable-atomic",
- "tokio",
 ]
 
 [[package]]

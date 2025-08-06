@@ -1,3 +1,4 @@
+use asydis::{AppEvent, DisplayPartition, FlushResult, SharedDisplay};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
@@ -11,7 +12,6 @@ use embedded_graphics::{
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
-use shared_display::{AppEvent, DisplayPartition, FlushResult, SharedDisplay};
 
 type DisplayType = SimulatorDisplay<BinaryColor>;
 
@@ -76,7 +76,7 @@ async fn line_app(mut display: DisplayPartition<DisplayType>) {
         display.clear(BinaryColor::Off).await.unwrap();
         Timer::after_millis(200).await;
 
-        match shared_display::EVENTS.try_receive() {
+        match asydis::EVENTS.try_receive() {
             Err(_) => continue,
             Ok(event) => match event {
                 event @ AppEvent::AppClosed(_) => display.extend_area(event).unwrap(),

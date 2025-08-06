@@ -1,3 +1,4 @@
+use asydis::{DisplayPartition, FlushResult, SharedDisplay, launch_app_in_app};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
@@ -9,7 +10,6 @@ use embedded_graphics::{
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
-use shared_display::{DisplayPartition, FlushResult, SharedDisplay, launch_app_in_app};
 
 type DisplayType = SimulatorDisplay<BinaryColor>;
 
@@ -31,10 +31,6 @@ async fn recursive_split_app(
     let start = Instant::now();
     let max_x: i32 = (display.size().width - 1).try_into().unwrap();
     let max_y: i32 = (display.size().height - 1).try_into().unwrap();
-    println!(
-        "recursive app level {recursion_level} has area {:?}",
-        display.area
-    );
 
     loop {
         Line::new(Point::new(0, 0), Point::new(max_x, max_y))

@@ -3,7 +3,7 @@ use embedded_graphics::{
     Pixel, draw_target::DrawTarget, geometry::Point, pixelcolor::BinaryColor, prelude::*,
     primitives::Rectangle,
 };
-use shared_display_core::{CompressableDisplay, SharableBufferedDisplay};
+use asydis_core::{CompressableDisplay, SharableBufferedDisplay};
 
 pub fn string_to_buffer(s: String) -> Vec<u8> {
     s.chars()

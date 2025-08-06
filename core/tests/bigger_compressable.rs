@@ -6,7 +6,7 @@ use embedded_graphics::{
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
 };
-use shared_display_core::{
+use asydis_core::{
     CompressedBuffer, CompressedDisplayPartition, DecompressingIter, MAX_APPS_PER_SCREEN,
     NewPartitionError,
 };

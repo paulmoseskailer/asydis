@@ -1,5 +1,5 @@
 [package]
-name = "shared-display"
+name = "asydis"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,7 +8,7 @@ members = ["core"]
 exclude = ["examples/rp2040"]
 
 [dependencies]
-shared-display-core = { git = "https://github.com/paulmoseskailer/shared-display.git", version = "0.1.0", default-features = false }
+asydis-core = { git = "https://github.com/paulmoseskailer/asydis.git", version = "0.1.0", default-features = false }
 embassy-sync = "0.7.0"
 embedded-graphics = { version = "0.8.1", default-features = false, features = ["async_draw"] } 
 heapless = "0.8.0"
@@ -18,7 +18,7 @@ static_cell = "2.1.0"
 
 [dev-dependencies]
 # for examples
-embedded-graphics-simulator = { git = "https://github.com/paulmoseskailer/simulator.git", branch = "compressable", version = "0.7.0", default-features=false, features = ["with-sdl", "async_draw"]}
+embedded-graphics-simulator = { git = "https://github.com/paulmoseskailer/simulator.git", branch = "master", version = "0.7.0", default-features=false, features = ["with-sdl", "async_draw"]}
 embassy-time = {version = "0.4.0", features = ["std"]}
 embassy-sync = {version = "0.7.0", features = ["std"]}
 embassy-executor = {version = "0.7.0", features = ["arch-std", "executor-thread"]}

@@ -12,7 +12,7 @@ use embedded_graphics::{
     prelude::*,
     primitives::Rectangle,
 };
-use shared_display_core::{
+use asydis_core::{
     CompressableDisplay, CompressedBuffer, CompressedDisplayPartition, DecompressingIter,
     MAX_APPS_PER_SCREEN,
 };

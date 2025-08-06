@@ -9,7 +9,7 @@ use embassy_time::{Duration, Timer};
 use embedded_graphics::{geometry::Size, primitives::Rectangle};
 use static_cell::StaticCell;
 
-use shared_display_core::{
+use asydis_core::{
     AppEvent, DisplayPartition, MAX_APPS_PER_SCREEN, NewPartitionError, SharableBufferedDisplay,
 };
 
