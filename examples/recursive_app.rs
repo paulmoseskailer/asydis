@@ -29,8 +29,12 @@ async fn recursive_split_app(
     spawner: &'static Spawner,
 ) -> () {
     let start = Instant::now();
-    let max_x: i32 = (display.bounding_box().size.width - 1).try_into().unwrap();
-    let max_y: i32 = (display.bounding_box().size.height - 1).try_into().unwrap();
+    let max_x: i32 = (display.size().width - 1).try_into().unwrap();
+    let max_y: i32 = (display.size().height - 1).try_into().unwrap();
+    println!(
+        "recursive app level {recursion_level} has area {:?}",
+        display.area
+    );
 
     loop {
         Line::new(Point::new(0, 0), Point::new(max_x, max_y))

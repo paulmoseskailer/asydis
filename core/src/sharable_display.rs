@@ -1,10 +1,10 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
-use embedded_graphics::prelude::{ContainsPoint, PointsIter};
+use embedded_graphics::prelude::{ContainsPoint, PointsIter, Transform};
 use embedded_graphics::{
     Pixel,
     draw_target::DrawTarget,
     geometry::Point,
-    prelude::{Dimensions, PixelColor, Size},
+    prelude::{OriginDimensions, PixelColor, Size},
     primitives::Rectangle,
 };
 
@@ -150,7 +150,7 @@ where
                     core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
                 },
                 self.parent_size,
-                area1,
+                area1.translate(self.area.top_left),
                 self.flush_request_channel,
             )?,
             DisplayPartition::new(
@@ -160,7 +160,7 @@ where
                     core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
                 },
                 self.parent_size,
-                area2,
+                area2.translate(self.area.top_left),
                 self.flush_request_channel,
             )?,
         ))
@@ -219,12 +219,12 @@ where
     }
 }
 
-impl<D> Dimensions for DisplayPartition<D>
+impl<D> OriginDimensions for DisplayPartition<D>
 where
     D: SharableBufferedDisplay + ?Sized,
 {
-    fn bounding_box(&self) -> Rectangle {
-        Rectangle::new_at_origin(self.area.size)
+    fn size(&self) -> Size {
+        self.area.size
     }
 }
 
@@ -323,7 +323,7 @@ mod tests {
         let mut display = FakeDisplay {
             buffer: [BinaryColor::Off; RESOLUTION],
         };
-        let parent_size = display.bounding_box().size;
+        let parent_size = display.size();
         let buffer = display.get_buffer();
         let too_small = Rectangle::new_at_origin(Size::new(7, 8));
         assert_eq!(
@@ -349,7 +349,7 @@ mod tests {
         let mut display = FakeDisplay {
             buffer: [BinaryColor::Off; RESOLUTION],
         };
-        let parent_size = display.bounding_box().size;
+        let parent_size = display.size();
         let buffer = display.get_buffer();
 
         let ok_area = Rectangle::new_at_origin(Size::new(WIDTH, HEIGHT));

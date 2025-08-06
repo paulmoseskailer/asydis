@@ -43,9 +43,9 @@ impl<D: CompressableDisplay> ContainsPoint for CompressedDisplayPartition<D> {
     }
 }
 
-impl<D: CompressableDisplay> Dimensions for CompressedDisplayPartition<D> {
-    fn bounding_box(&self) -> Rectangle {
-        Rectangle::new_at_origin(self.area.size)
+impl<D: CompressableDisplay> OriginDimensions for CompressedDisplayPartition<D> {
+    fn size(&self) -> Size {
+        self.area.size
     }
 }
 

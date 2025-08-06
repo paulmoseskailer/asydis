@@ -31,7 +31,7 @@ async fn simple_split_clear() -> Result<(), NewPartitionError> {
     d.clear(BinaryColor::On).await.unwrap();
     assert_eq!(*d.flush(SHOULD_PRINT_FLUSH), [1; NUM_PIXELS]);
 
-    let parent_size = d.bounding_box().size;
+    let parent_size = d.size();
     let left_area = Rectangle::new(Point::new(0, 0), Size::new(8, 2));
     let mut left_display = DisplayPartition::<FakeDisplay<NUM_PIXELS>>::new(
         0,
@@ -72,7 +72,7 @@ async fn simple_split_draw_iter() -> Result<(), NewPartitionError> {
     };
     assert_eq!(*d.flush(SHOULD_PRINT_FLUSH), [0; NUM_PIXELS]);
 
-    let parent_size = d.bounding_box().size;
+    let parent_size = d.size();
     let left_area = Rectangle::new(Point::new(0, 0), Size::new(8, 2));
     let mut left_display = DisplayPartition::<FakeDisplay<NUM_PIXELS>>::new(
         0,
