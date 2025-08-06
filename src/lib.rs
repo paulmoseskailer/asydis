@@ -85,21 +85,21 @@
 //! #[embassy_executor::main]
 //! async fn main(spawner: Spawner) {
 //!     let (display, mut window) = init_simulator_display();
-//!     let mut asydis: SharedDisplay<DisplayType> = SharedDisplay::new(display, spawner);
+//!     let mut shared_display: SharedDisplay<DisplayType> = SharedDisplay::new(display, spawner);
 //!
 //!     let right_rect = Rectangle::new(Point::new(64, 0), Size::new(64, 64));
-//!     asydis
+//!     shared_display
 //!         .launch_new_app(line_app, right_rect)
 //!         .await
 //!         .unwrap();
 //!
 //!     let left_rect = Rectangle::new(Point::new(0, 0), Size::new(64, 64));
-//!     asydis
+//!     shared_display
 //!         .launch_new_app(text_app, left_rect)
 //!         .await
 //!         .unwrap();
 //!
-//!     asydis
+//!     shared_display
 //!         .run_flush_loop_with(async |d, _area| {
 //!             window.update(d);
 //!             if window.events().any(|e| e == SimulatorEvent::Quit) {
