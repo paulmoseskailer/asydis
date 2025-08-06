@@ -1,73 +1,66 @@
 use core::cmp::PartialEq;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
 use embedded_graphics::{
     Pixel, draw_target::DrawTarget, geometry::Point, prelude::*, primitives::Rectangle,
 };
-
-// requires embedded-alloc for no_std
 extern crate alloc;
-use alloc::vec::Vec;
+use alloc::rc::Rc;
 
-use crate::{
-    NewPartitionError, SharableBufferedDisplay, compressed_buffer::*, flush_lock::FlushLock,
-};
+use crate::{MAX_APPS_PER_SCREEN, NewPartitionError, compressed_buffer::*};
 
-/// A [`SharableBufferedDisplay`] that can compressed.
-pub trait CompressableDisplay:
-    SharableBufferedDisplay<BufferElement: Copy + PartialEq + Default>
-{
+/// A buffered [`DrawTarget`] that can be compressed and shared among multiple apps.
+pub trait CompressableDisplay: DrawTarget {
+    /// The type of elements saved to the buffer - may differ from [`DrawTarget::Color`].
+    type BufferElement: Copy + PartialEq + Default;
+
+    /// Specify how `Color` maps to  `BufferElement`.
+    fn map_to_buffer_element(color: Self::Color) -> Self::BufferElement;
+
+    /// Calculate the buffer position of a [`Point`].
+    fn calculate_buffer_index(point: Point, buffer_area_size: Size) -> usize;
+
     /// Flushes a given chunk. Called once per chunk for every flush.
-    async fn flush_chunk(&mut self, chunk: Vec<Self::BufferElement>, chunk_area: Rectangle);
-
-    /// Drops the original buffer if one exists. [`CompressedDisplayPartition`]s assign their
-    /// own buffers.
-    // TODO: reduce buffer to chunk size instead
-    fn drop_buffer(&mut self);
+    async fn flush_chunk(&mut self, chunk: &[Self::BufferElement], chunk_area: Rectangle);
 }
 
 /// A partition of a [`CompressableDisplay`].
-pub struct CompressedDisplayPartition<D: SharableBufferedDisplay + ?Sized>
-where
-    D::BufferElement: core::cmp::PartialEq + Copy,
-{
-    buffer: CompressedBuffer<D::BufferElement>,
+pub struct CompressedDisplayPartition<D: CompressableDisplay> {
+    id: u8,
+    /// The compressed buffer that this partition controls.
+    pub buffer: Rc<Mutex<CriticalSectionRawMutex, CompressedBuffer<D::BufferElement>>>,
     /// Size of the parent display.
     pub parent_size: Size,
     /// Size of the partition itself.
     pub area: Rectangle,
 
     _display: core::marker::PhantomData<D>,
+    flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
 }
 
-impl<C, B, D> ContainsPoint for CompressedDisplayPartition<D>
-where
-    B: Copy + core::cmp::PartialEq,
-    D: CompressableDisplay<BufferElement = B, Color = C> + ?Sized,
-{
+impl<D: CompressableDisplay> ContainsPoint for CompressedDisplayPartition<D> {
     fn contains(&self, p: Point) -> bool {
         self.area.contains(p)
     }
 }
 
-impl<C, B, D> Dimensions for CompressedDisplayPartition<D>
-where
-    B: Copy + core::cmp::PartialEq,
-    D: CompressableDisplay<BufferElement = B, Color = C> + ?Sized,
-{
-    fn bounding_box(&self) -> Rectangle {
-        self.area
+impl<D: CompressableDisplay> OriginDimensions for CompressedDisplayPartition<D> {
+    fn size(&self) -> Size {
+        self.area.size
     }
 }
 
-impl<C, B, D> CompressedDisplayPartition<D>
+impl<B, D> CompressedDisplayPartition<D>
 where
-    C: PixelColor,
-    B: Copy + core::cmp::PartialEq,
-    D: CompressableDisplay<BufferElement = B, Color = C> + ?Sized,
+    B: Default + Copy + PartialEq,
+    D: CompressableDisplay<BufferElement = B>,
 {
     /// Creates a new partition.
     pub fn new(
+        id: u8,
         parent_size: Size,
         area: Rectangle,
+        buffer: Rc<Mutex<CriticalSectionRawMutex, CompressedBuffer<D::BufferElement>>>,
+        flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
     ) -> Result<CompressedDisplayPartition<D>, NewPartitionError> {
         if area.size.width < 8 {
             return Err(NewPartitionError::TooSmall);
@@ -77,10 +70,12 @@ where
         }
 
         Ok(CompressedDisplayPartition {
-            buffer: CompressedBuffer::new(area.size, B::default()),
+            id,
+            buffer,
             parent_size,
             area,
             _display: core::marker::PhantomData,
+            flush_request_channel,
         })
     }
 
@@ -90,16 +85,16 @@ where
         todo!("enveloping compressed partitions not yet implemented");
     }
 
-    /// Provide a raw pointer to the compressed buffer.
-    pub fn get_ptr_to_buffer(&self) -> *const Vec<(B, u8)> {
-        self.buffer.get_ptr_to_inner()
+    /// Request to flush this partition.
+    pub async fn request_flush(&mut self) {
+        self.flush_request_channel.send(self.id).await;
     }
 }
 
 impl<B, D> DrawTarget for CompressedDisplayPartition<D>
 where
-    B: Copy + core::cmp::PartialEq,
     D: CompressableDisplay<BufferElement = B>,
+    B: Copy + PartialEq,
 {
     type Color = D::Color;
     type Error = D::Error;
@@ -108,24 +103,22 @@ where
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        FlushLock::new()
-            .protect_write(|| {
-                let self_area = self.area;
-                let self_offset = self_area.top_left;
-                pixels
-                    .into_iter()
-                    .filter(|Pixel(pos, _color)| self_area.contains(*pos + self_offset))
-                    .for_each(|p| {
-                        let target_index = D::calculate_buffer_index(p.0, self.area.size);
-                        self.buffer
-                            .set_at_index(target_index, D::map_to_buffer_element(p.1))
-                            .unwrap();
-                    });
-                if self.buffer.check_integrity().is_err() {
-                    panic!("after draw_iter check rle failed");
-                }
-            })
-            .await;
+        let self_area = self.area;
+        let self_offset = self_area.top_left;
+        for p in pixels
+            .into_iter()
+            .filter(|Pixel(pos, _color)| self_area.contains(*pos + self_offset))
+        {
+            let target_index = D::calculate_buffer_index(p.0, self.area.size);
+            self.buffer
+                .lock()
+                .await
+                .set_at_index(target_index, D::map_to_buffer_element(p.1))
+                .unwrap();
+        }
+        if self.buffer.lock().await.check_integrity().is_err() {
+            panic!("after draw_iter check rle failed");
+        }
         Ok(())
     }
 
@@ -135,23 +128,32 @@ where
         color: Self::Color,
     ) -> Result<(), Self::Error> {
         let buffer_element = D::map_to_buffer_element(color);
+        let drawable_area = Rectangle::new_at_origin(self.area.size);
+        let area = drawable_area.intersection(&area);
+        if area.is_zero_sized() {
+            return Ok(());
+        }
 
         // fill row-by-row
-        let row_starts = core::iter::repeat(area.top_left)
-            .take(area.size.height as usize)
-            .enumerate()
-            .map(|(i, p)| p + Point::new(0, i as i32));
+        let row_starts = area.rows().map(|y| Point::new(area.top_left.x, y));
         for row_start in row_starts {
             let target_index = D::calculate_buffer_index(row_start, self.area.size);
             self.buffer
+                .lock()
+                .await
                 .set_at_index_contiguous(target_index, buffer_element, area.size.width as usize)
                 .unwrap();
+        }
+        if self.buffer.lock().await.check_integrity().is_err() {
+            panic!("check integrity failed after fill_contiguous");
         }
         Ok(())
     }
 
     async fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
         self.buffer
+            .lock()
+            .await
             .clear_and_refill(D::map_to_buffer_element(color));
         Ok(())
     }

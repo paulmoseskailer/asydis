@@ -1,10 +1,10 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
-use embedded_graphics::prelude::{ContainsPoint, PointsIter};
+use embedded_graphics::prelude::{ContainsPoint, PointsIter, Transform};
 use embedded_graphics::{
     Pixel,
     draw_target::DrawTarget,
     geometry::Point,
-    prelude::{Dimensions, PixelColor, Size},
+    prelude::{OriginDimensions, PixelColor, Size},
     primitives::Rectangle,
 };
 
@@ -24,24 +24,6 @@ pub trait SharableBufferedDisplay: DrawTarget {
 
     /// Calculate the buffer position of a [`Point`].
     fn calculate_buffer_index(point: Point, buffer_area_size: Size) -> usize;
-
-    /// Return a new [`DisplayPartition`] of the display.
-    fn new_partition(
-        &mut self,
-        id: u8,
-        area: Rectangle,
-        flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
-    ) -> Result<DisplayPartition<Self>, NewPartitionError> {
-        let parent_size = self.bounding_box().size;
-
-        DisplayPartition::new(
-            id,
-            self.get_buffer(),
-            parent_size,
-            area,
-            flush_request_channel,
-        )
-    }
 }
 
 /// Error Type for creating new screen partitions.
@@ -168,7 +150,7 @@ where
                     core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
                 },
                 self.parent_size,
-                area1,
+                area1.translate(self.area.top_left),
                 self.flush_request_channel,
             )?,
             DisplayPartition::new(
@@ -178,7 +160,7 @@ where
                     core::slice::from_raw_parts_mut(self.buffer, self.buffer_len)
                 },
                 self.parent_size,
-                area2,
+                area2.translate(self.area.top_left),
                 self.flush_request_channel,
             )?,
         ))
@@ -237,12 +219,12 @@ where
     }
 }
 
-impl<D> Dimensions for DisplayPartition<D>
+impl<D> OriginDimensions for DisplayPartition<D>
 where
     D: SharableBufferedDisplay + ?Sized,
 {
-    fn bounding_box(&self) -> Rectangle {
-        self.area
+    fn size(&self) -> Size {
+        self.area.size
     }
 }
 
@@ -341,27 +323,23 @@ mod tests {
         let mut display = FakeDisplay {
             buffer: [BinaryColor::Off; RESOLUTION],
         };
+        let parent_size = display.size();
+        let buffer = display.get_buffer();
         let too_small = Rectangle::new_at_origin(Size::new(7, 8));
         assert_eq!(
-            display
-                .new_partition(0, too_small, &FLUSH_REQUESTS)
-                .unwrap_err(),
+            DisplayPartition::new(0, buffer, parent_size, too_small, &FLUSH_REQUESTS).unwrap_err(),
             NewPartitionError::TooSmall
         );
 
         let too_big = Rectangle::new_at_origin(Size::new(WIDTH + 8, 8));
         assert_eq!(
-            display
-                .new_partition(0, too_big, &FLUSH_REQUESTS)
-                .unwrap_err(),
+            DisplayPartition::new(0, buffer, parent_size, too_big, &FLUSH_REQUESTS).unwrap_err(),
             NewPartitionError::OutsideParent
         );
 
         let bad_width = Rectangle::new_at_origin(Size::new(WIDTH - 1, 8));
         assert_eq!(
-            display
-                .new_partition(0, bad_width, &FLUSH_REQUESTS)
-                .unwrap_err(),
+            DisplayPartition::new(0, buffer, parent_size, bad_width, &FLUSH_REQUESTS).unwrap_err(),
             NewPartitionError::BadWidth
         );
     }
@@ -371,9 +349,12 @@ mod tests {
         let mut display = FakeDisplay {
             buffer: [BinaryColor::Off; RESOLUTION],
         };
+        let parent_size = display.size();
+        let buffer = display.get_buffer();
 
         let ok_area = Rectangle::new_at_origin(Size::new(WIDTH, HEIGHT));
-        let mut partition = display.new_partition(1, ok_area, &FLUSH_REQUESTS).unwrap();
+        let mut partition =
+            DisplayPartition::new(1, buffer, parent_size, ok_area, &FLUSH_REQUESTS).unwrap();
 
         let half_size = Size::new(WIDTH / 2, HEIGHT);
         let left_area = Rectangle::new_at_origin(half_size);

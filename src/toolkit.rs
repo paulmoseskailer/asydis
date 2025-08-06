@@ -20,7 +20,8 @@ pub(crate) static SPAWNER: StaticCell<Spawner> = StaticCell::new();
 pub static EVENTS: Channel<CriticalSectionRawMutex, AppEvent, EVENT_QUEUE_SIZE> = Channel::new();
 
 /// Channel for partitions to request flushing.
-static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> = Channel::new();
+pub(crate) static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> =
+    Channel::new();
 
 /// Whether to continue flushing or not.
 #[derive(PartialEq, Eq)]
@@ -61,9 +62,9 @@ where
         let real_display: &mut D = &mut *self.real_display.lock().await;
 
         // check area inside display
-        let bb = real_display.bounding_box();
-        if !(bb.contains(area.top_left)
-            && bb.contains(area.bottom_right().unwrap_or(area.top_left)))
+        let parent_area = real_display.bounding_box();
+        if !(parent_area.contains(area.top_left)
+            && parent_area.contains(area.bottom_right().unwrap_or(area.top_left)))
         {
             return Err(NewPartitionError::OutsideParent);
         }
@@ -76,7 +77,13 @@ where
         }
 
         let index = self.partition_areas.len();
-        let result = real_display.new_partition(index.try_into().unwrap(), area, &FLUSH_REQUESTS);
+        let result = DisplayPartition::new(
+            index.try_into().unwrap(),
+            real_display.get_buffer(),
+            parent_area.size,
+            area,
+            &FLUSH_REQUESTS,
+        );
 
         if result.is_ok() {
             self.partition_areas.push(area).unwrap();
@@ -151,20 +158,18 @@ where
     }
 
     /// Spawns a background task that waits for flush requests from all [`DisplayPartition`]s and flushes.
-    pub async fn wait_for_flush_requests<F>(&self, mut flush_area_fn: F, retry_interval: Duration)
+    pub async fn wait_for_flush_requests<F>(&self, mut flush_area_fn: F)
     where
         F: AsyncFnMut(&mut D, Rectangle) -> FlushResult,
     {
         'flush: loop {
-            while let Ok(partition) = FLUSH_REQUESTS.try_receive() {
-                let area_to_flush = self.partition_areas[partition as usize];
-                let flush_result =
-                    flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
-                if flush_result == FlushResult::Abort {
-                    break 'flush;
-                }
+            let partition = FLUSH_REQUESTS.receive().await;
+            let area_to_flush = self.partition_areas[partition as usize];
+            let flush_result =
+                flush_area_fn(&mut *self.real_display.lock().await, area_to_flush).await;
+            if flush_result == FlushResult::Abort {
+                break 'flush;
             }
-            Timer::after(Duration::from_millis(10) + retry_interval).await;
         }
     }
 }

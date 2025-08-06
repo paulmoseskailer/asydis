@@ -20,6 +20,3 @@ mod compressable_display;
 mod compressed_buffer;
 pub use compressable_display::*;
 pub use compressed_buffer::*;
-
-mod flush_lock;
-pub use flush_lock::*;

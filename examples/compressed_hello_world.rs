@@ -1,5 +1,5 @@
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use embedded_graphics::{
     geometry::Size,
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
@@ -55,8 +55,10 @@ async fn text_app(mut display: CompressedDisplayPartition<DisplayType>) -> () {
             )
             .await
             .unwrap();
+        display.request_flush().await;
         Timer::after_millis(500).await;
         display.clear(BinaryColor::Off).await.unwrap();
+        display.request_flush().await;
         Timer::after_millis(500).await;
     }
 }
@@ -89,9 +91,11 @@ async fn line_app(mut display: CompressedDisplayPartition<DisplayType>) -> () {
         .await
         .unwrap();
 
+        display.request_flush().await;
         // clear and loop
         Timer::after_millis(500).await;
         display.clear(BinaryColor::Off).await.unwrap();
+        display.request_flush().await;
         Timer::after_millis(500).await;
     }
 }
@@ -130,15 +134,12 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(500).await;
     shared_display
-        .run_flush_loop_with_completion(
-            async |d| {
-                window.update(d);
-                if window.events().any(|e| e == SimulatorEvent::Quit) {
-                    return FlushResult::Abort;
-                }
-                FlushResult::Continue
-            },
-            Duration::from_millis(20),
-        )
+        .wait_for_flush_requests(async |d| {
+            window.update(d);
+            if window.events().any(|e| e == SimulatorEvent::Quit) {
+                return FlushResult::Abort;
+            }
+            FlushResult::Continue
+        })
         .await;
 }

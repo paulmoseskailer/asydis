@@ -127,7 +127,6 @@
 #![feature(async_fn_traits)]
 #![warn(missing_docs)]
 
-mod shared_display_ref;
 mod toolkit;
 mod toolkit_compressed;
 
