@@ -419,16 +419,13 @@ mod tests {
         assert_eq!(buffer.inner, vec![(0, 255), (0, 1)]);
 
         buffer.set_at_index(0, 27)?;
-        assert_eq!(buffer.inner, vec![(27, 1), (0, 254), (0, 1)]);
+        assert_eq!(buffer.inner, vec![(27, 1), (0, 255)]);
 
         buffer.set_at_index(2, 27)?;
-        assert_eq!(
-            buffer.inner,
-            vec![(27, 1), (0, 1), (27, 1), (0, 252), (0, 1)]
-        );
+        assert_eq!(buffer.inner, vec![(27, 1), (0, 1), (27, 1), (0, 253)]);
 
         buffer.set_at_index(1, 27)?;
-        assert_eq!(buffer.inner, vec![(27, 3), (0, 252), (0, 1)]);
+        assert_eq!(buffer.inner, vec![(27, 3), (0, 253)]);
         Ok(())
     }
 
