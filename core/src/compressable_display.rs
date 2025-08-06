@@ -1,9 +1,5 @@
 use core::cmp::PartialEq;
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
-    channel::Channel,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
 use embedded_graphics::{
     Pixel, draw_target::DrawTarget, geometry::Point, prelude::*, primitives::Rectangle,
 };
@@ -38,7 +34,7 @@ pub struct CompressedDisplayPartition<D: CompressableDisplay> {
     pub area: Rectangle,
 
     _display: core::marker::PhantomData<D>,
-    flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
+    flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
 }
 
 impl<D: CompressableDisplay> ContainsPoint for CompressedDisplayPartition<D> {
@@ -64,7 +60,7 @@ where
         parent_size: Size,
         area: Rectangle,
         buffer: Rc<Mutex<CriticalSectionRawMutex, CompressedBuffer<D::BufferElement>>>,
-        flush_request_channel: &'static Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN>,
+        flush_request_channel: &'static Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN>,
     ) -> Result<CompressedDisplayPartition<D>, NewPartitionError> {
         if area.size.width < 8 {
             return Err(NewPartitionError::TooSmall);

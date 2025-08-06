@@ -4,11 +4,7 @@ use alloc::boxed::Box;
 
 use ::core::{future::Future, pin::Pin};
 use embassy_executor::Spawner;
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
-    channel::Channel,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{geometry::Size, primitives::Rectangle};
 use static_cell::StaticCell;
@@ -24,7 +20,7 @@ pub(crate) static SPAWNER: StaticCell<Spawner> = StaticCell::new();
 pub static EVENTS: Channel<CriticalSectionRawMutex, AppEvent, EVENT_QUEUE_SIZE> = Channel::new();
 
 /// Channel for partitions to request flushing.
-pub(crate) static FLUSH_REQUESTS: Channel<ThreadModeRawMutex, u8, MAX_APPS_PER_SCREEN> =
+pub(crate) static FLUSH_REQUESTS: Channel<CriticalSectionRawMutex, u8, MAX_APPS_PER_SCREEN> =
     Channel::new();
 
 /// Whether to continue flushing or not.
